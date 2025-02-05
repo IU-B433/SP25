@@ -166,7 +166,7 @@ check_permissions() {
     done
 
     local actual_perm=$(stat -c "%a" "/opt/data/shared" 2>/dev/null)
-    if [[ "$actual_perm" != "1777" ]]; then
+    if [[ "$actual_perm" != "1777" && "$actual_perm" != "777" ]]; then
         echo -e "${RED}[-] Permission for /opt/data/shared is $actual_perm but should be 1777.${NO_COLOR}"
         errors=1
     fi
@@ -196,11 +196,11 @@ check_sticky_bit() {
 
 check_suid_sgid() {
     if [ ! -f "/opt/whoami" ]; then
-        exist_with_error "/opt/whoami does not exist."
+        exit_with_error "/opt/whoami does not exist."
     fi
 
     if [ ! -f "/opt/id" ]; then
-        exist_with_error "/opt/id does not exist."
+        exit_with_error "/opt/id does not exist."
     fi
 
     local errors=0
