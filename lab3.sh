@@ -167,7 +167,7 @@ check_development_shared_folder() {
         fi
 
 		if [[ "$perm" != "2570" && "$perm" != "3570" && "$perm" != "570" ]]; then
-		    exit_with_error "Other users should not be able to access $shared_dir."
+		    exit_with_error "Permissions for $shared_dir is incorrect, please review the folder's permission."
         fi
 
 		if [[ "$perm" != "2570" && "$perm" != "3570" ]]; then
