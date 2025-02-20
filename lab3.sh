@@ -166,15 +166,15 @@ check_development_shared_folder() {
 		    exit_with_error "$shared_dir should have group development."
         fi
 
-		if [[ "$perm" != "2570" && "$perm" != "3570" && "$perm" != "570" ]]; then
+		if [[ "$perm" != "1570" && "$perm" != "2570" && "$perm" != "3570" && "$perm" != "570" ]]; then
 		    exit_with_error "Permissions for $shared_dir is incorrect, please review the folder's permission."
         fi
 
 		if [[ "$perm" != "2570" && "$perm" != "3570" ]]; then
-		    exit_with_error "New files created in $shared_dir is not associated to group development"
+				exit_with_error "New files created in $shared_dir is not associated to group development (you'll need to set a sgid for it)"
 		fi
 
-		if [ $(stat -c "%A" "$shared_dir" | cut -c7) != "s" ]; then
+		if [[ "$perm" != "3570" && "$perm" != "1570" ]]; then
 		    exit_with_error "Sticky bit is not set on $shared_dir, users can delete others' files"
         fi
     fi
