@@ -98,7 +98,7 @@ def main():
         image_path = "./images/YellowLabradorLooking.jpg"
         index = labrador_retriever_index
     else:
-        image_path = "./panda.jpg"
+        image_path = "./images/panda.jpg"
         index = panda_retriever_index
 
     if epsilon > 1.0 or epsilon < 0.0:
