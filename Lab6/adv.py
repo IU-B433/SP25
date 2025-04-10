@@ -105,13 +105,13 @@ def display_images(
 
     return adversarial_example_path
 
-def transfering_attack(adverarial_example, model, decode_predictions):
+def transferring_attack(adverarial_example, model, decode_predictions):
     # Just use the image as the input, predict the label
     image_probs = model.predict(adverarial_example)
     _, image_class, class_confidence = get_imagenet_label(
         image_probs, decode_predictions
     )
-    print("{} : {:.2f}% Confidence".format(image_class, class_confidence * 100))
+    print("The result of transferring attack is {} : {:.2f}% Confidence".format(image_class, class_confidence * 100))
 
 def main():
     args = parse_args()
@@ -212,13 +212,11 @@ def main():
             )
         else:
             raise ValueError("Invalid model version. Choose 'v2-0.5', 'v2-1.0' or 'resnet50'.")
-        transfer_pretrained_model = tf.keras.applications.ResNet50(
-            include_top=True, weights="imagenet"
-        )
+
         transfer_pretrained_model.trainable = False
         decode_predictions = tf.keras.applications.resnet50.decode_predictions
         adversarial_example = preprocess(adversarial_example_path, transfer_model_version)
-        transfering_attack(adversarial_example, transfer_pretrained_model, decode_predictions)
+        transferring_attack(adversarial_example, transfer_pretrained_model, decode_predictions)
 
 
 if __name__ == "__main__":
