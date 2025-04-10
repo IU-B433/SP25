@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 import argparse
 
 labrador_retriever_index = 208
-panda_retriever_index = 388
-
+panda_index = 388
 
 # Handle command line arguments
 def parse_args():
@@ -26,8 +25,21 @@ def parse_args():
     parser.add_argument(
         "--model_version",
         "-v",
-        help="Version of the model to use, you can only type in v2-0.5 or v2-1.0",
+        help="Version of the model to use, you can only type in v2-0.5, v2-1.0",
         default="v2-1.0",
+    )
+    parser.add_argument(
+        "--transfer_model_version",
+        "-tv",
+        help="Version of the transfering model you want to fool. You can only type in v2-0.5, v2-1.0, resnet50, and it should not be the same with the model version you used to generate the adversarial example.",
+        default=None,
+    )
+    parser.add_argument(
+        "--target_label",
+        "-tl",
+        help="For the targeted attack, you can choose a target label you want to construct.",
+        type=int,
+        default=None,
     )
     parser.add_argument(
         "--print_params",
@@ -41,13 +53,19 @@ def parse_args():
 
 
 # Helper function to preprocess the image so that it can be inputted in MobileNetV2
-def preprocess(image):
+def preprocess(image_path, model):
+    image_raw = tf.io.read_file(image_path)
+    image = tf.image.decode_image(image_raw)
     # image = tf.cast(image, tf.float32)
     image = tf.image.resize(image, (224, 224))
-    image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
+    if "v2" in model:
+        image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
+    elif "resnet" in model:
+        image = tf.keras.applications.resnet50.preprocess_input(image)
+    else:
+        raise ValueError("Invalid model version. Choose 'v2-0.5', 'v2-1.0' or 'resnet50'.")
     image = image[None, ...]
     return image
-
 
 # Helper function to extract labels from probability vector
 def get_imagenet_label(probs, decode_predictions):
@@ -79,10 +97,21 @@ def display_images(
     plt.title(
         "{} \n {} : {:.2f}% Confidence".format(description, label, confidence * 100)
     )
+    print("Adversarial example with {}, {}: {:.2f}% Confidence".format(description, label, confidence * 100))
 
-    plt.savefig("./images/" + image_name)
+    adversarial_example_path = "./images/" + image_name
+    plt.savefig(adversarial_example_path)
     # plt.show()
 
+    return adversarial_example_path
+
+def transfering_attack(adverarial_example, model, decode_predictions):
+    # Just use the image as the input, predict the label
+    image_probs = model.predict(adverarial_example)
+    _, image_class, class_confidence = get_imagenet_label(
+        image_probs, decode_predictions
+    )
+    print("{} : {:.2f}% Confidence".format(image_class, class_confidence * 100))
 
 def main():
     args = parse_args()
@@ -90,16 +119,23 @@ def main():
     epsilon = args.epsilon
     model_version = args.model_version
     print_params = args.print_params
+    transfer_model_version = args.transfer_model_version
+    target_label = args.target_label
 
-    if image_name == "":
-        image_path = "./images/panda.jpg"
-        index = panda_retriever_index
-    elif image_name == "labrador":
+    if target_label is not None:
+        if target_label < 0 or target_label > 999:
+            raise ValueError("Target label must be between 0 and 999.")
+        index = target_label
+        print("Target label is set to:", index)
+
+    if image_name == "labrador":
         image_path = "./images/YellowLabradorLooking.jpg"
-        index = labrador_retriever_index
+        if target_label is None:
+            index = labrador_retriever_index
     else:
         image_path = "./images/panda.jpg"
-        index = panda_retriever_index
+        if target_label is None:
+            index = panda_index
 
     if epsilon > 1.0 or epsilon < 0.0:
         raise ValueError("Epsilon must be between 0 and 1.")
@@ -113,7 +149,7 @@ def main():
             include_top=True, alpha=1.0, weights="imagenet"
         )
     else:
-        raise ValueError("Invalid model version. Choose 'v2-0.5' or 'v2-1.0'.")
+        raise ValueError("Invalid model version. Choose 'v2-0.5', 'v2-1.0'.")
 
     mpl.rcParams["figure.figsize"] = (8, 8)
     mpl.rcParams["axes.grid"] = False
@@ -127,10 +163,7 @@ def main():
     # ImageNet labels
     decode_predictions = tf.keras.applications.mobilenet_v2.decode_predictions
 
-    image_raw = tf.io.read_file(image_path)
-    image = tf.image.decode_image(image_raw)
-
-    image = preprocess(image)
+    image = preprocess(image_path, model_version)
     image_probs = pretrained_model.predict(image)
 
     plt.figure()
@@ -139,10 +172,11 @@ def main():
         image_probs, decode_predictions
     )
     plt.title("{} : {:.2f}% Confidence".format(image_class, class_confidence * 100))
+    print("Original image {} : {:.2f}% Confidence".format(image_class, class_confidence * 100))
     # plt.savefig("original_image_{}_{}_{}_{:.2f}.jpg".format(image_name, model_version, image_class, class_confidence * 100))
     # plt.show()
 
-    # Get the input label of the image.
+    # Generate adversarial example
     label = tf.one_hot(index, image_probs.shape[-1])
     label = tf.reshape(label, (1, image_probs.shape[-1]))
 
@@ -154,14 +188,40 @@ def main():
     
     adv_x = tf.clip_by_value(adv_x, -1, 1)
     adv_image_name = "adversarial_image_{}_{}_{:0.3f}.jpg".format(image_name, model_version, epsilon)
-    display_images(
+    adversarial_example_path = display_images(
         pretrained_model,
         adv_x,
-        "Epsilon = {:0.3f}".format(epsilon),
+        "epsilon = {:0.3f}".format(epsilon),
         adv_image_name,
         decode_predictions,
     )
 
+    # Transfering attack
+    if transfer_model_version is not None:
+        if transfer_model_version == "v2-0.5":
+            transfer_pretrained_model = tf.keras.applications.MobileNetV2(
+                include_top=True, alpha=0.5, weights="imagenet"
+            )
+        elif transfer_model_version == "v2-1.0":
+            transfer_pretrained_model = tf.keras.applications.MobileNetV2(
+                include_top=True, alpha=1.0, weights="imagenet"
+            )
+        elif transfer_model_version == "resnet50":
+            transfer_pretrained_model = tf.keras.applications.ResNet50(
+                include_top=True, weights="imagenet"
+            )
+        else:
+            raise ValueError("Invalid model version. Choose 'v2-0.5', 'v2-1.0' or 'resnet50'.")
+        transfer_pretrained_model = tf.keras.applications.ResNet50(
+            include_top=True, weights="imagenet"
+        )
+        transfer_pretrained_model.trainable = False
+        decode_predictions = tf.keras.applications.resnet50.decode_predictions
+        adversarial_example = preprocess(adversarial_example_path, transfer_model_version)
+        transfering_attack(adversarial_example, transfer_pretrained_model, decode_predictions)
+
 
 if __name__ == "__main__":
     main()
+
+    
